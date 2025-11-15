@@ -1,0 +1,557 @@
+1. Product Overview
+
+Product Name (working): Vendor Compliance Copilot
+One-liner:
+
+A SaaS platform that tracks supplier compliance documents, expiry dates, and risks — and automatically keeps vendors and internal teams on top of renewals.
+
+Primary Goal:
+Replace messy spreadsheets and email chains with a single source of truth for vendor compliance, drastically reducing risk of non-compliance, production disruption, or failed audits.
+
+Target Customers (Initial ICP):
+
+Mid-sized manufacturers (50–500 suppliers)
+
+Procurement / Vendor Management teams
+
+Compliance & Quality teams (ISO, safety, ESG, etc.)
+
+2. Problem Statement
+
+Companies with many vendors must collect and maintain:
+
+Certificates (ISO 9001, ISO 27001, HACCP, etc.)
+
+Insurance documents
+
+Safety & environmental compliance
+
+Contracts and amendments
+
+ESG/sustainability documents
+
+Regulatory licenses
+
+Today this is usually handled by:
+
+Excel / Google Sheets
+
+Shared drives
+
+Manual email reminders
+
+People’s memory
+
+Pain points:
+
+Expired Documents Go Unnoticed
+
+Vendor’s insurance expired last month → risk exposure
+
+ISO certification expires → non-compliance in audits
+
+Manual, Error-Prone Follow-Ups
+
+Procurement chases vendors by email
+
+No consistent reminder logic
+
+No Single Source of Truth
+
+Compliance status scattered across folders, inboxes, and personal spreadsheets
+
+No quick “at a glance” risk view for leadership
+
+Audit & Customer Pressure
+
+Customers ask: “Prove your suppliers are compliant.”
+
+Teams scramble to compile docs from multiple systems
+
+3. Product Vision
+
+To become the mission-critical system of record for vendor compliance status, documents, and risk — especially for mid-market manufacturers and supply chain–heavy companies.
+
+Long term:
+
+Integrate with ERP / Procurement tools
+
+Provide AI-driven risk scoring
+
+Become standard for “supplier compliance dashboards” in audits and customer reviews
+
+4. Personas
+4.1. Priya – Head of Procurement
+
+Cares about: continuity of supply, vendor performance, minimal disruption
+
+Problems: last-minute fire drills when vendors fall out of compliance, no simple overview
+
+Needs: simple dashboards, red/amber/green view of vendor compliance
+
+4.2. Mark – Vendor Compliance Manager
+
+Cares about: collecting and updating documents, passing audits
+
+Problems: constantly chasing vendors, no automation
+
+Needs: automated reminders, clear status for each document type, bulk imports
+
+4.3. Ana – Vendor Contact (External)
+
+Cares about: quickly fulfilling customer requirements
+
+Problems: too many email threads, unclear what’s missing
+
+Needs: simple portal link; upload docs; see what’s pending and due
+
+5. Goals & Non-Goals (MVP)
+5.1. MVP Goals (Release 1)
+
+Let customers create and manage a vendor list.
+
+Define document types & requirements per vendor category (e.g., ISO certs, insurance).
+
+Track document uploads, expirations, and status.
+
+Automatically remind vendors and internal owners before expiry.
+
+Provide a compliance dashboard (per vendor & portfolio).
+
+Create an audit-ready log of uploads, approvals, and changes.
+
+5.2. Non-Goals (for MVP)
+
+Full contract authoring / e-signature (integrate later with DocuSign, etc.).
+
+Deep ERP integration (SAP/Oracle) in v1 — only simple CSV export/import.
+
+Complex vendor onboarding questionnaires (just basic in v1).
+
+Native mobile apps (web responsive only).
+
+AI OCR/extraction of fields from PDFs (future phase).
+
+6. Core Use Cases & User Stories
+6.1. Vendor Onboarding & Setup
+
+User Story 1:
+As a Compliance Manager, I want to add a new vendor and assign required document types based on vendor category (e.g., “Packaging supplier”) so that I can standardize requirements.
+
+User Story 2:
+As a Compliance Manager, I want to bulk import vendors from a CSV so that I can migrate from my spreadsheet quickly.
+
+6.2. Document Collection & Management
+
+User Story 3:
+As a Compliance Manager, I want to send a secure link to vendors where they can see requested documents and upload them, so I don’t have to manage attachments in email.
+
+User Story 4:
+As a Vendor Contact, I want to see a simple list of required documents, their status, and due dates, so I know what to upload and by when.
+
+User Story 5:
+As a Compliance Manager, I want to review uploaded documents and approve/reject them, optionally adding comments, so I can ensure they meet standards.
+
+6.3. Expiry Management & Notifications
+
+User Story 6:
+As a Compliance Manager, I want to configure reminder rules (e.g., 90/60/30 days before expiry) so that vendors and internal owners are notified ahead of time.
+
+User Story 7:
+As a Vendor Contact, I want to receive email reminders with direct links to renew/replace expiring documents, so I don’t forget.
+
+User Story 8:
+As a Head of Procurement, I want to receive weekly summaries of vendors with documents expiring soon so I can proactively manage risk.
+
+6.4. Compliance Dashboard & Reporting
+
+User Story 9:
+As a Head of Procurement, I want to see a dashboard with compliance percentages (e.g., “78% of strategic vendors fully compliant”) so I can evaluate risk.
+
+User Story 10:
+As a Compliance Manager, I want to generate an export (Excel/PDF) of all vendors and their document statuses for audits.
+
+6.5. Audit Trail & Governance
+
+User Story 11:
+As a Compliance Manager, I want a log of all actions on each document (uploaded by, approved by, timestamps) so I can present evidence in audits.
+
+User Story 12:
+As an Admin, I want role-based access (Admin, Procurement, Compliance, Read-Only) so only authorized people can view/modify vendor documents.
+
+7. Feature Specification (MVP)
+7.1. Tenant & User Management
+
+Multi-tenant architecture: Each customer has isolated data.
+
+User roles:
+
+Admin (full control)
+
+Compliance Manager
+
+Procurement Manager
+
+Read-Only Viewer
+
+Authentication:
+
+Email + password
+
+(Future) SSO (SAML, Azure AD, etc.)
+
+7.2. Vendor Management
+
+Fields (per Vendor):
+
+Vendor ID (unique)
+
+Vendor Name
+
+Legal entity name (optional)
+
+Category (e.g., Raw Material, Logistics, Packaging, Services)
+
+Risk level (Low/Medium/High) – manual set for MVP
+
+Primary Contact (Name, Email, Phone)
+
+Status (Active / Inactive / Onboarding)
+
+Tags (e.g., “Strategic”, “Critical”)
+
+Key Functions:
+
+Add / edit / archive vendor
+
+Bulk import (CSV)
+
+Filter & search by name, category, risk, compliance status
+
+7.3. Document Type Configuration
+
+Document Type Example:
+
+Name: “ISO 9001 Certificate”
+
+Applies to: Vendor categories (Packaging, Component Supplier)
+
+Required/optional
+
+Expiry required: Yes/No
+
+Default validity: e.g., 1 year
+
+Internal owner (who is responsible internally)
+
+Attachment type: File (PDF/JPG), URL, Text
+
+Functionality:
+
+Admin defines templates of requirements:
+
+For each vendor category, which document types are required?
+
+When a vendor is assigned a category, system auto-attaches required document slots for that vendor.
+
+7.4. Document Lifecycle
+
+Each vendor document has:
+
+Document Type (FK)
+
+Vendor (FK)
+
+Status:
+
+Missing
+
+Pending Review
+
+Approved
+
+Rejected
+
+Expired
+
+File(s): uploaded attachments
+
+Issue Date (optional)
+
+Expiry Date (optional, required if doc type needs it)
+
+Last Updated At
+
+Uploaded by (user or vendor)
+
+Approved by (internal user)
+
+Flows:
+
+Vendor or internal user uploads document
+
+Status → Pending Review
+
+Compliance Manager reviews:
+
+Approve → Status Approved, expiry date set
+
+Reject → Status Rejected, optional comment → triggers email to vendor
+
+When expiry date passes:
+
+Status auto changes → Expired
+
+Triggers expiration rules/notifications
+
+7.5. Vendor Portal (External Access)
+
+No login for vendors in MVP → magic link per vendor (secure token).
+
+Vendors click link → see:
+
+List of required documents
+
+Status, expiry, last updated
+
+Upload button for each missing/expired doc
+
+Basic branding (company logo).
+
+Security:
+
+Token tied to vendor; revocable by admin
+
+Option to regenerate link
+
+7.6. Notifications & Reminder Engine
+Types of Notifications:
+
+Expiry reminders (Vendor & Internal)
+
+Configurable intervals: e.g., 90, 60, 30, 7 days before expiry
+
+Email format: vendor name, document type, link to upload.
+
+Missing Documents
+
+Periodic summary: “These vendors have missing required documents.”
+
+Rejected Documents
+
+Email to vendor with reason and action required.
+
+Summary Reports
+
+Weekly/Monthly email to Head of Procurement & Compliance with key stats.
+
+Config:
+
+Admin can define:
+
+Which reminders are ON/OFF
+
+Default schedule
+
+Recipients (vendor, internal owner, both)
+
+7.7. Compliance Dashboard & Reporting
+Dashboard Widgets:
+
+Overall compliance percentage:
+
+% of vendors fully compliant (all required docs approved and valid).
+
+By category:
+
+e.g., Raw Material vendors – 82% compliant; Logistics – 67%.
+
+Upcoming expirations:
+
+List of documents expiring in next 30/60/90 days.
+
+High-risk vendors:
+
+High-risk flag + incomplete/expired docs.
+
+Reports:
+
+CSV export:
+
+Columns: Vendor, Category, Risk, Document Type, Status, Expiry Date, Last Action.
+
+PDF “Audit Pack” (Later phase if needed; for MVP, CSV is enough).
+
+7.8. Audit Log
+
+For each vendor and document:
+
+Action: Created / Updated / Approved / Rejected / Status change / Reminder sent
+
+Actor: User or System
+
+Timestamp
+
+Optional comment (e.g., reason for rejection)
+
+UI:
+
+Activity timeline per document
+
+Option to filter by action type
+
+8. Non-Functional Requirements (MVP)
+
+Security
+
+All traffic via HTTPS
+
+Encrypted at rest (DB + file storage)
+
+Role-based access control
+
+Vendor portal tokens must be revocable and time-limited (configurable)
+
+Performance
+
+Vendor list view loads within < 2 seconds for up to 5,000 vendors
+
+Document list per vendor loads < 1 sec for up to 100 docs
+
+Reliability
+
+Target uptime: 99.5% for MVP
+
+Reminder jobs retried on transient failures
+
+Compliance (eventual direction)
+
+Data residency options (EU vs US) later
+
+Logs retention settings
+
+9. Information Architecture & Data Model (High-Level)
+
+Entities:
+
+Tenant
+
+User (belongs to Tenant, has role)
+
+Vendor (belongs to Tenant)
+
+DocumentType (config per Tenant)
+
+VendorDocumentRequirement (Vendor x DocumentType link)
+
+VendorDocument (actual uploaded file instance)
+
+NotificationRule
+
+NotificationLog
+
+AuditLog
+
+(If you want, I can later turn this into concrete table schemas.)
+
+10. Integrations (MVP vs Future)
+MVP:
+
+Email service:
+
+e.g., SendGrid / SES
+
+Simple SSO-like vendor access via magic links (no OAuth/SSO yet)
+
+CSV import/export
+
+Future:
+
+ERP/Procurement:
+
+SAP, Oracle, NetSuite, Coupa (via APIs)
+
+Storage:
+
+S3, Azure Blob, GCS (configurable)
+
+E-Signature:
+
+DocuSign / Adobe Sign for contracts
+
+Directory/SSO:
+
+Azure AD, Okta
+
+11. Success Metrics
+Customer Value Metrics:
+
+% vendors with all required docs uploaded and approved
+
+Reduction in expired documents (month over month)
+
+Time spent on chasing vendors reduced (qualitative)
+
+Audit success: number of “no findings” in supplier compliance
+
+Product Metrics:
+
+Weekly active internal users per tenant
+
+Number of documents uploaded / approved
+
+Vendor portal open and upload rate
+
+Trial → paid conversion
+
+Churn rate
+
+12. Pricing Hypothesis
+
+Initial SaaS pricing (hypothesis):
+
+Starter – $99/month
+
+Up to 50 vendors
+
+Basic templates
+
+Email reminders
+
+1 admin, 4 internal users
+
+Growth – $299/month
+
+Up to 250 vendors
+
+Custom document types
+
+Advanced reminders
+
+Audit logs & exports
+
+Unlimited internal users
+
+Enterprise – $799+/month
+
+250+ vendors
+
+Priority support
+
+Custom integrations (S3, SSO, etc.)
+
+Dedicated onboarding
+
+You can always adjust based on early sales conversations.
+
+13. Future Roadmap Ideas (Post-MVP)
+
+AI document reader: auto-recognize document type, expiry date, vendor name from PDFs.
+
+Vendor risk scoring: combine doc completeness + vendor category + region.
+
+Questionnaire module: send vendor risk questionnaires (ESG, InfoSec, etc.) and store results.
+
+Insights & benchmarking: e.g., “Most vendors in X category are late in providing insurance.”
+
+API-first platform: for other procurement tools to plug into your compliance data.
