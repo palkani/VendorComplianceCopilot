@@ -3,6 +3,7 @@ import { eq, and, desc, sql, gte, lte, inArray, ilike, or } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
+  type UpsertUser,
   type Vendor,
   type InsertVendor,
   type DocumentType,
@@ -24,8 +25,9 @@ import {
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  // User methods
+  // User methods (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined>;
@@ -80,6 +82,21 @@ export class DatabaseStorage implements IStorage {
   // User methods
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
     return user;
   }
 

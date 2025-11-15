@@ -1,7 +1,18 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Session storage table for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
 
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["admin", "compliance_manager", "procurement_manager", "read_only"]);
@@ -10,17 +21,21 @@ export const riskLevelEnum = pgEnum("risk_level", ["low", "medium", "high"]);
 export const documentStatusEnum = pgEnum("document_status", ["missing", "pending", "approved", "rejected", "expired"]);
 export const actionTypeEnum = pgEnum("action_type", ["created", "updated", "approved", "rejected", "status_change", "reminder_sent", "uploaded"]);
 
-// Users table
+// Users table - compatible with Replit Auth
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: text("email").notNull().unique(),
-  name: text("name").notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default("read_only"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 // Vendors table
@@ -101,8 +116,6 @@ export const insertVendorDocumentSchema = createInsertSchema(vendorDocuments).om
   id: true, 
   createdAt: true, 
   updatedAt: true,
-  uploadedAt: true,
-  approvedAt: true,
 });
 
 export type InsertVendorDocument = z.infer<typeof insertVendorDocumentSchema>;
