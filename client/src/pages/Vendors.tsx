@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { VendorTable } from "@/components/VendorTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,68 +19,113 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { isUnauthorizedError } from "@/lib/authUtils";
+import type { Vendor } from "@shared/schema";
 
-const mockVendors = [
-  {
-    id: "1",
-    name: "Acme Packaging Inc.",
-    category: "Packaging",
-    riskLevel: "low" as const,
-    compliancePercentage: 95,
-    status: "active" as const,
-  },
-  {
-    id: "2",
-    name: "GlobalTech Logistics",
-    category: "Logistics",
-    riskLevel: "medium" as const,
-    compliancePercentage: 67,
-    status: "active" as const,
-  },
-  {
-    id: "3",
-    name: "Premier Raw Materials Ltd.",
-    category: "Raw Material",
-    riskLevel: "high" as const,
-    compliancePercentage: 42,
-    status: "active" as const,
-  },
-  {
-    id: "4",
-    name: "SafetyFirst Consultants",
-    category: "Services",
-    riskLevel: "low" as const,
-    compliancePercentage: 88,
-    status: "onboarding" as const,
-  },
-  {
-    id: "5",
-    name: "EcoComponents Supplier",
-    category: "Component Supplier",
-    riskLevel: "medium" as const,
-    compliancePercentage: 73,
-    status: "active" as const,
-  },
-  {
-    id: "6",
-    name: "QualityFirst Manufacturing",
-    category: "Raw Material",
-    riskLevel: "low" as const,
-    compliancePercentage: 91,
-    status: "active" as const,
-  },
-];
+const addVendorSchema = z.object({
+  name: z.string().min(1, "Vendor name is required"),
+  category: z.string().min(1, "Category is required"),
+  riskLevel: z.enum(["low", "medium", "high"]),
+  primaryContact: z.string().email("Invalid email address"),
+  status: z.enum(["active", "inactive", "onboarding"]).default("onboarding"),
+});
+
+type AddVendorForm = z.infer<typeof addVendorSchema>;
 
 export default function Vendors() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-  const filteredVendors = mockVendors.filter((vendor) => {
+  const { data: vendors, isLoading, error } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  useEffect(() => {
+    if (error && isUnauthorizedError(error as Error)) {
+      toast({
+        title: "Unauthorized",
+        description: "You are logged out. Logging in again...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 500);
+    }
+  }, [error, toast]);
+
+  const form = useForm<AddVendorForm>({
+    resolver: zodResolver(addVendorSchema),
+    defaultValues: {
+      name: "",
+      category: "",
+      riskLevel: "low",
+      primaryContact: "",
+      status: "onboarding",
+    },
+  });
+
+  const createVendorMutation = useMutation({
+    mutationFn: async (data: AddVendorForm) => {
+      return await apiRequest("POST", "/api/vendors", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      toast({
+        title: "Success",
+        description: "Vendor added successfully",
+      });
+      form.reset();
+      setIsAddDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add vendor",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = (data: AddVendorForm) => {
+    createVendorMutation.mutate(data);
+  };
+
+  const filteredVendors = vendors?.map(vendor => ({
+    ...vendor,
+    compliancePercentage: 0, // TODO: Calculate from documents
+  })).filter((vendor) => {
     const matchesSearch = vendor.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === "all" || vendor.category === categoryFilter;
     return matchesSearch && matchesCategory;
-  });
+  }) || [];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-muted-foreground">Loading vendors...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -110,64 +155,108 @@ export default function Vendors() {
                   Enter the vendor details to add them to your system.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="vendor-name">Vendor Name</Label>
-                  <Input
-                    id="vendor-name"
-                    placeholder="Enter vendor name"
-                    data-testid="input-vendor-name"
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Vendor Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="Enter vendor name"
+                            data-testid="input-vendor-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
-                <div>
-                  <Label htmlFor="vendor-category">Category</Label>
-                  <Select>
-                    <SelectTrigger id="vendor-category" data-testid="select-vendor-category">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="packaging">Packaging</SelectItem>
-                      <SelectItem value="logistics">Logistics</SelectItem>
-                      <SelectItem value="raw-material">Raw Material</SelectItem>
-                      <SelectItem value="services">Services</SelectItem>
-                      <SelectItem value="components">Component Supplier</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="vendor-risk">Risk Level</Label>
-                  <Select>
-                    <SelectTrigger id="vendor-risk" data-testid="select-vendor-risk">
-                      <SelectValue placeholder="Select risk level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low Risk</SelectItem>
-                      <SelectItem value="medium">Medium Risk</SelectItem>
-                      <SelectItem value="high">High Risk</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="vendor-contact">Primary Contact Email</Label>
-                  <Input
-                    id="vendor-contact"
-                    type="email"
-                    placeholder="contact@vendor.com"
-                    data-testid="input-vendor-contact"
+                  <FormField
+                    control={form.control}
+                    name="category"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Category</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-vendor-category">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Packaging">Packaging</SelectItem>
+                            <SelectItem value="Logistics">Logistics</SelectItem>
+                            <SelectItem value="Raw Material">Raw Material</SelectItem>
+                            <SelectItem value="Services">Services</SelectItem>
+                            <SelectItem value="Component Supplier">Component Supplier</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} data-testid="button-cancel">
-                    Cancel
-                  </Button>
-                  <Button onClick={() => {
-                    console.log('Add vendor');
-                    setIsAddDialogOpen(false);
-                  }} data-testid="button-submit-vendor">
-                    Add Vendor
-                  </Button>
-                </div>
-              </div>
+                  <FormField
+                    control={form.control}
+                    name="riskLevel"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Risk Level</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-vendor-risk">
+                              <SelectValue placeholder="Select risk level" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="low">Low Risk</SelectItem>
+                            <SelectItem value="medium">Medium Risk</SelectItem>
+                            <SelectItem value="high">High Risk</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="primaryContact"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Primary Contact Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="email"
+                            placeholder="contact@vendor.com"
+                            data-testid="input-vendor-contact"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAddDialogOpen(false)}
+                      data-testid="button-cancel"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createVendorMutation.isPending}
+                      data-testid="button-submit-vendor"
+                    >
+                      {createVendorMutation.isPending ? "Adding..." : "Add Vendor"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
             </DialogContent>
           </Dialog>
         </div>

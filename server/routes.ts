@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
@@ -8,6 +8,28 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs/promises";
+
+// Middleware to validate vendor portal tokens
+const validatePortalToken: RequestHandler = async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    if (!token) {
+      return res.status(400).json({ message: "Portal token is required" });
+    }
+
+    const vendor = await storage.getVendorByPortalToken(token);
+    if (!vendor) {
+      return res.status(404).json({ message: "Invalid or expired portal link" });
+    }
+
+    // Attach vendor to request for downstream use
+    (req as any).portalVendor = vendor;
+    next();
+  } catch (error) {
+    console.error("Error validating portal token:", error);
+    res.status(500).json({ message: "Failed to validate portal token" });
+  }
+};
 
 // Set up file upload
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -329,29 +351,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ===== Vendor Portal Routes (Public with token) =====
+  // ===== Vendor Portal Routes (Public with token validation) =====
   
-  app.get("/api/portal/:token", async (req, res) => {
+  app.get("/api/portal/:token", validatePortalToken, async (req: any, res) => {
     try {
-      const vendor = await storage.getVendorByPortalToken(req.params.token);
-      if (!vendor) {
-        return res.status(404).json({ message: "Invalid or expired portal link" });
-      }
-      res.json(vendor);
+      res.json(req.portalVendor);
     } catch (error) {
       console.error("Error fetching vendor by token:", error);
       res.status(500).json({ message: "Failed to fetch vendor" });
     }
   });
 
-  app.get("/api/portal/:token/documents", async (req, res) => {
+  app.get("/api/portal/:token/documents", validatePortalToken, async (req: any, res) => {
     try {
-      const vendor = await storage.getVendorByPortalToken(req.params.token);
-      if (!vendor) {
-        return res.status(404).json({ message: "Invalid or expired portal link" });
-      }
-
-      const documents = await storage.listVendorDocuments({ vendorId: vendor.id });
+      const documents = await storage.listVendorDocuments({ vendorId: req.portalVendor.id });
       res.json(documents);
     } catch (error) {
       console.error("Error fetching portal documents:", error);

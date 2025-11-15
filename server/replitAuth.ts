@@ -71,10 +71,15 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
+    try {
+      const user = {};
+      updateUserSession(user, tokens);
+      await upsertUser(tokens.claims());
+      verified(null, user);
+    } catch (error) {
+      console.error("Error during authentication verification:", error);
+      verified(error as Error);
+    }
   };
 
   // Keep track of registered strategies
@@ -111,9 +116,28 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
+    passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
+      if (err || !user) {
+        return res.redirect("/api/login");
+      }
+
+      // Regenerate session to prevent session fixation
+      const returnTo = (req.session as any).returnTo || "/";
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("Error regenerating session:", regenerateErr);
+          return res.redirect("/api/login");
+        }
+
+        req.login(user, (loginErr) => {
+          if (loginErr) {
+            console.error("Error during login:", loginErr);
+            return res.redirect("/api/login");
+          }
+
+          res.redirect(returnTo);
+        });
+      });
     })(req, res, next);
   });
 
@@ -130,30 +154,67 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Ensure this is actually a logged-in session
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  // Validate session has required claims
+  if (!user?.claims?.sub || !user.expires_at) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Verify user exists in database (prevents session fixation)
+  try {
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+  } catch (error) {
+    console.error("Error validating user session:", error);
     return res.status(401).json({ message: "Unauthorized" });
   }
 
   const now = Math.floor(Date.now() / 1000);
+  
+  // Token still valid
   if (now <= user.expires_at) {
     return next();
   }
 
+  // Try to refresh the token
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
   try {
     const config = await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
+    
+    // Regenerate session after token refresh to prevent session fixation
+    await new Promise<void>((resolve, reject) => {
+      const sessionData = { ...req.session };
+      req.session.regenerate((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          // Restore session data after regeneration
+          Object.assign(req.session, sessionData);
+          req.session.save((saveErr) => {
+            if (saveErr) reject(saveErr);
+            else resolve();
+          });
+        }
+      });
+    });
+
     return next();
   } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    console.error("Error refreshing token:", error);
+    return res.status(401).json({ message: "Unauthorized" });
   }
 };
