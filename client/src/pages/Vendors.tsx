@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { VendorTable } from "@/components/VendorTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ const addVendorSchema = z.object({
 type AddVendorForm = z.infer<typeof addVendorSchema>;
 
 export default function Vendors() {
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -290,7 +292,7 @@ export default function Vendors() {
 
       <VendorTable
         vendors={filteredVendors}
-        onViewVendor={(id) => console.log('View vendor:', id)}
+        onViewVendor={(id) => navigate(`/vendors/${id}`)}
         onEditVendor={(id) => console.log('Edit vendor:', id)}
         onArchiveVendor={(id) => console.log('Archive vendor:', id)}
       />

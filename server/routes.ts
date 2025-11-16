@@ -236,6 +236,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // List documents for a specific vendor (convenience route)
+  app.get("/api/vendors/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const documents = await storage.listVendorDocuments({ vendorId: req.params.id });
+      res.json(documents);
+    } catch (error) {
+      console.error("Error listing vendor documents:", error);
+      res.status(500).json({ message: "Failed to list vendor documents" });
+    }
+  });
+
   // Get a single vendor document
   app.get("/api/vendor-documents/:id", isAuthenticated, async (req, res) => {
     try {
@@ -287,8 +298,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Upload document for specific vendor (convenience route)
+  app.post("/api/vendors/:id/documents", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const { documentTypeId, issueDate, expiryDate } = req.body;
+      const vendorId = req.params.id;
+
+      const document = await storage.createVendorDocument({
+        vendorId,
+        documentTypeId,
+        fileName: req.file.originalname,
+        filePath: req.file.path,
+        fileSize: req.file.size,
+        issueDate: issueDate ? new Date(issueDate) : undefined,
+        expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+        uploadedBy: req.user.claims.sub,
+        uploadedAt: new Date(),
+        status: "pending",
+      });
+
+      await storage.createAuditLog({
+        vendorDocumentId: document.id,
+        vendorId,
+        actionType: "uploaded",
+        actorId: req.user.claims.sub,
+        actorType: "user",
+        description: `Document uploaded: ${req.file.originalname}`,
+      });
+
+      res.status(201).json(document);
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({ message: "Failed to upload document" });
+    }
+  });
+
   // Approve a vendor document
   app.post("/api/vendor-documents/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const { notes } = req.body;
+      const document = await storage.updateVendorDocument(req.params.id, {
+        status: "approved",
+        approvedBy: req.user.claims.sub,
+        approvedAt: new Date(),
+        notes,
+      });
+
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      await storage.createAuditLog({
+        vendorDocumentId: document.id,
+        vendorId: document.vendorId,
+        actionType: "approved",
+        actorId: req.user.claims.sub,
+        actorType: "user",
+        description: `Document approved`,
+      });
+
+      res.json(document);
+    } catch (error) {
+      console.error("Error approving document:", error);
+      res.status(500).json({ message: "Failed to approve document" });
+    }
+  });
+
+  // Approve document (convenience route)
+  app.post("/api/documents/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
       const { notes } = req.body;
       const document = await storage.updateVendorDocument(req.params.id, {
@@ -322,6 +403,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-documents/:id/reject", isAuthenticated, async (req: any, res) => {
     try {
       const { rejectionReason } = req.body;
+      if (!rejectionReason) {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+
+      const document = await storage.updateVendorDocument(req.params.id, {
+        status: "rejected",
+        rejectionReason,
+      });
+
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      await storage.createAuditLog({
+        vendorDocumentId: document.id,
+        vendorId: document.vendorId,
+        actionType: "rejected",
+        actorId: req.user.claims.sub,
+        actorType: "user",
+        description: `Document rejected: ${rejectionReason}`,
+      });
+
+      res.json(document);
+    } catch (error) {
+      console.error("Error rejecting document:", error);
+      res.status(500).json({ message: "Failed to reject document" });
+    }
+  });
+
+  // Reject document (convenience route)
+  app.post("/api/documents/:id/reject", isAuthenticated, async (req: any, res) => {
+    try {
+      const { reason } = req.body;
+      const rejectionReason = reason || req.body.rejectionReason;
+      
       if (!rejectionReason) {
         return res.status(400).json({ message: "Rejection reason is required" });
       }

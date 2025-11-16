@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import Vendors from "@/pages/Vendors";
+import VendorDetail from "@/pages/VendorDetail";
 import Documents from "@/pages/Documents";
 import VendorPortal from "@/pages/VendorPortal";
 import NotFound from "@/pages/not-found";
@@ -37,6 +38,7 @@ function Router() {
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/vendors" component={Vendors} />
+          <Route path="/vendors/:id" component={VendorDetail} />
           <Route path="/documents" component={Documents} />
           <Route path="/portal/:token" component={VendorPortal} />
           <Route path="/reports">
