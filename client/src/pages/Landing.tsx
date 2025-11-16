@@ -14,9 +14,14 @@ export default function Landing() {
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Track supplier compliance documents, manage expiry dates, and automate vendor renewal reminders with confidence
           </p>
-          <Button size="lg" onClick={() => window.location.href = "/api/login"} data-testid="button-login">
-            Sign In to Get Started
-          </Button>
+          <div className="flex gap-4 justify-center">
+            <Button size="lg" onClick={() => window.location.href = "/api/login"} data-testid="button-login">
+              Sign In to Get Started
+            </Button>
+            <Button size="lg" variant="outline" onClick={() => window.location.href = "/pricing"} data-testid="button-pricing">
+              View Pricing
+            </Button>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
