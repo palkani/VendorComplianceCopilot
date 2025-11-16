@@ -20,6 +20,31 @@ export const vendorStatusEnum = pgEnum("vendor_status", ["active", "inactive", "
 export const riskLevelEnum = pgEnum("risk_level", ["low", "medium", "high"]);
 export const documentStatusEnum = pgEnum("document_status", ["missing", "pending", "approved", "rejected", "expired"]);
 export const actionTypeEnum = pgEnum("action_type", ["created", "updated", "approved", "rejected", "status_change", "reminder_sent", "uploaded"]);
+export const subscriptionPlanEnum = pgEnum("subscription_plan", ["free", "pro", "pro_plus"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "canceled", "past_due", "trialing"]);
+
+// Organizations table
+export const organizations = pgTable("organizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  plan: subscriptionPlanEnum("plan").notNull().default("free"),
+  stripeCustomerId: varchar("stripe_customer_id").unique(),
+  stripeSubscriptionId: varchar("stripe_subscription_id").unique(),
+  subscriptionStatus: subscriptionStatusEnum("subscription_status"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertOrganizationSchema = createInsertSchema(organizations).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+});
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type Organization = typeof organizations.$inferSelect;
 
 // Users table - compatible with Replit Auth
 export const users = pgTable("users", {
@@ -29,6 +54,7 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default("read_only"),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -41,6 +67,7 @@ export type User = typeof users.$inferSelect;
 // Vendors table
 export const vendors = pgTable("vendors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   legalEntityName: text("legal_entity_name"),
   category: text("category").notNull(),
@@ -175,3 +202,57 @@ export const notificationLogs = pgTable("notification_logs", {
 });
 
 export type NotificationLog = typeof notificationLogs.$inferSelect;
+
+// Plan limits configuration
+export const PLAN_LIMITS = {
+  free: {
+    name: "Free Demo",
+    price: 0,
+    maxUsers: 1,
+    maxVendors: 5,
+    maxDocuments: 10,
+    features: [
+      "Up to 1 user",
+      "5 vendor profiles",
+      "10 document uploads",
+      "Basic compliance tracking",
+      "Email support"
+    ]
+  },
+  pro: {
+    name: "Pro",
+    price: 30,
+    maxUsers: 2,
+    maxVendors: 50,
+    maxDocuments: 200,
+    features: [
+      "Up to 2 users",
+      "50 vendor profiles",
+      "200 document uploads",
+      "Advanced compliance tracking",
+      "Automated renewal reminders",
+      "Priority email support",
+      "Audit logging"
+    ]
+  },
+  pro_plus: {
+    name: "Pro Plus",
+    price: 59.99,
+    maxUsers: 5,
+    maxVendors: -1, // unlimited
+    maxDocuments: -1, // unlimited
+    features: [
+      "Up to 5 users",
+      "Unlimited vendor profiles",
+      "Unlimited document uploads",
+      "Advanced compliance tracking",
+      "Automated renewal reminders",
+      "Priority support with 24hr SLA",
+      "Comprehensive audit logging",
+      "Custom document types",
+      "API access"
+    ]
+  }
+} as const;
+
+export type PlanType = keyof typeof PLAN_LIMITS;

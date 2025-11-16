@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, sql, gte, lte, inArray, ilike, or } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray, ilike, or, count } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -14,6 +14,9 @@ import {
   type InsertNotificationRule,
   type AuditLog,
   type InsertAuditLog,
+  type Organization,
+  type InsertOrganization,
+  type PlanType,
   users,
   vendors,
   documentTypes,
@@ -21,17 +24,30 @@ import {
   notificationRules,
   auditLogs,
   notificationLogs,
+  organizations,
+  PLAN_LIMITS,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
+  // Organization methods
+  getOrganization(id: string): Promise<Organization | undefined>;
+  createOrganization(org: InsertOrganization): Promise<Organization>;
+  updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | undefined>;
+  getOrganizationByStripeCustomerId(customerId: string): Promise<Organization | undefined>;
+  getOrganizationByStripeSubscriptionId(subscriptionId: string): Promise<Organization | undefined>;
+  getOrganizationUsage(orgId: string): Promise<{ userCount: number; vendorCount: number; documentCount: number }>;
+  canAddUser(orgId: string): Promise<boolean>;
+  canAddVendor(orgId: string): Promise<boolean>;
+  canAddDocument(orgId: string): Promise<boolean>;
+
   // User methods (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined>;
-  listUsers(): Promise<User[]>;
+  listUsers(organizationId?: string): Promise<User[]>;
 
   // Vendor methods
   getVendor(id: string): Promise<Vendor | undefined>;
@@ -79,6 +95,78 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Organization methods
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
+    return org;
+  }
+
+  async createOrganization(orgData: InsertOrganization): Promise<Organization> {
+    const [org] = await db.insert(organizations).values(orgData).returning();
+    return org;
+  }
+
+  async updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | undefined> {
+    const [org] = await db.update(organizations).set({ ...updates, updatedAt: new Date() }).where(eq(organizations.id, id)).returning();
+    return org;
+  }
+
+  async getOrganizationByStripeCustomerId(customerId: string): Promise<Organization | undefined> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.stripeCustomerId, customerId));
+    return org;
+  }
+
+  async getOrganizationByStripeSubscriptionId(subscriptionId: string): Promise<Organization | undefined> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.stripeSubscriptionId, subscriptionId));
+    return org;
+  }
+
+  async getOrganizationUsage(orgId: string): Promise<{ userCount: number; vendorCount: number; documentCount: number }> {
+    const [userCountResult] = await db.select({ count: count() }).from(users).where(eq(users.organizationId, orgId));
+    const [vendorCountResult] = await db.select({ count: count() }).from(vendors).where(eq(vendors.organizationId, orgId));
+    const [documentCountResult] = await db
+      .select({ count: count() })
+      .from(vendorDocuments)
+      .innerJoin(vendors, eq(vendorDocuments.vendorId, vendors.id))
+      .where(eq(vendors.organizationId, orgId));
+
+    return {
+      userCount: userCountResult?.count || 0,
+      vendorCount: vendorCountResult?.count || 0,
+      documentCount: documentCountResult?.count || 0,
+    };
+  }
+
+  async canAddUser(orgId: string): Promise<boolean> {
+    const org = await this.getOrganization(orgId);
+    if (!org) return false;
+    
+    const limits = PLAN_LIMITS[org.plan];
+    const usage = await this.getOrganizationUsage(orgId);
+    
+    return limits.maxUsers < 0 || usage.userCount < limits.maxUsers;
+  }
+
+  async canAddVendor(orgId: string): Promise<boolean> {
+    const org = await this.getOrganization(orgId);
+    if (!org) return false;
+    
+    const limits = PLAN_LIMITS[org.plan];
+    const usage = await this.getOrganizationUsage(orgId);
+    
+    return limits.maxVendors < 0 || usage.vendorCount < limits.maxVendors;
+  }
+
+  async canAddDocument(orgId: string): Promise<boolean> {
+    const org = await this.getOrganization(orgId);
+    if (!org) return false;
+    
+    const limits = PLAN_LIMITS[org.plan];
+    const usage = await this.getOrganizationUsage(orgId);
+    
+    return limits.maxDocuments < 0 || usage.documentCount < limits.maxDocuments;
+  }
+
   // User methods
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -97,6 +185,18 @@ export class DatabaseStorage implements IStorage {
         },
       })
       .returning();
+    
+    // Auto-create organization for new users if they don't have one
+    if (user && !user.organizationId) {
+      const org = await this.createOrganization({
+        name: `${user.firstName || user.email || 'User'}'s Organization`,
+        plan: "free",
+      });
+      
+      await this.updateUser(user.id, { organizationId: org.id });
+      user.organizationId = org.id;
+    }
+    
     return user;
   }
 
@@ -111,11 +211,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
-    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    const [user] = await db.update(users).set({ ...updates, updatedAt: new Date() }).where(eq(users.id, id)).returning();
     return user;
   }
 
-  async listUsers(): Promise<User[]> {
+  async listUsers(organizationId?: string): Promise<User[]> {
+    if (organizationId) {
+      return await db.select().from(users).where(eq(users.organizationId, organizationId)).orderBy(desc(users.createdAt));
+    }
     return await db.select().from(users).orderBy(desc(users.createdAt));
   }
 
