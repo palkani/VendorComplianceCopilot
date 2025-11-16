@@ -3,11 +3,17 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { z } from "zod";
-import { insertVendorSchema, insertDocumentTypeSchema, insertVendorDocumentSchema } from "@shared/schema";
+import { insertVendorSchema, insertDocumentTypeSchema, insertVendorDocumentSchema, PLAN_LIMITS, type PlanType } from "@shared/schema";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs/promises";
+import Stripe from "stripe";
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Middleware to validate vendor portal tokens
 const validatePortalToken: RequestHandler = async (req, res, next) => {
@@ -64,6 +70,188 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // ===== Organization Routes =====
+  
+  app.get("/api/organization", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.organizationId) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const organization = await storage.getOrganization(user.organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json(organization);
+    } catch (error) {
+      console.error("Error fetching organization:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
+  app.get("/api/organization/usage", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.organizationId) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const usage = await storage.getOrganizationUsage(user.organizationId);
+      const organization = await storage.getOrganization(user.organizationId);
+      const limits = PLAN_LIMITS[organization!.plan];
+      
+      res.json({
+        usage,
+        limits: {
+          maxUsers: limits.maxUsers,
+          maxVendors: limits.maxVendors,
+          maxDocuments: limits.maxDocuments,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching organization usage:", error);
+      res.status(500).json({ message: "Failed to fetch organization usage" });
+    }
+  });
+
+  // ===== Stripe Payment Routes =====
+  
+  app.get("/api/create-checkout-session", isAuthenticated, async (req: any, res) => {
+    try {
+      const plan = req.query.plan as PlanType;
+      if (!plan || !['pro', 'pro_plus'].includes(plan)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.organizationId) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const organization = await storage.getOrganization(user.organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const planDetails = PLAN_LIMITS[plan];
+      const priceInCents = Math.round(planDetails.price * 100);
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: planDetails.name,
+                description: `${planDetails.maxUsers} users, ${planDetails.maxVendors === -1 ? 'Unlimited' : planDetails.maxVendors} vendors`,
+              },
+              recurring: {
+                interval: 'month',
+              },
+              unit_amount: priceInCents,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${req.protocol}://${req.hostname}/pricing?success=true`,
+        cancel_url: `${req.protocol}://${req.hostname}/pricing?canceled=true`,
+        client_reference_id: organization.id,
+        customer_email: user.email || undefined,
+        metadata: {
+          organizationId: organization.id,
+          plan: plan,
+        },
+      });
+
+      res.redirect(303, session.url!);
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Stripe webhook handler
+  app.post("/api/webhooks/stripe", async (req, res) => {
+    const sig = req.headers['stripe-signature'] as string;
+    
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET || ''
+      );
+    } catch (err: any) {
+      console.error(`Webhook signature verification failed:`, err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const organizationId = session.metadata?.organizationId;
+          const plan = session.metadata?.plan as PlanType;
+
+          if (organizationId && plan) {
+            await storage.updateOrganization(organizationId, {
+              plan: plan,
+              stripeCustomerId: session.customer as string,
+              stripeSubscriptionId: session.subscription as string,
+              subscriptionStatus: 'active',
+            });
+          }
+          break;
+        }
+
+        case 'customer.subscription.updated': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const organization = await storage.getOrganizationByStripeSubscriptionId(subscription.id);
+          
+          if (organization) {
+            await storage.updateOrganization(organization.id, {
+              subscriptionStatus: subscription.status as any,
+              currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined,
+            });
+          }
+          break;
+        }
+
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const organization = await storage.getOrganizationByStripeSubscriptionId(subscription.id);
+          
+          if (organization) {
+            await storage.updateOrganization(organization.id, {
+              plan: 'free',
+              subscriptionStatus: 'canceled',
+            });
+          }
+          break;
+        }
+
+        default:
+          console.log(`Unhandled event type ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Error processing webhook:", error);
+      res.status(500).json({ message: "Webhook processing failed" });
     }
   });
 

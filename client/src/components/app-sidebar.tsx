@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FileText, BarChart3, Settings, LogOut, User } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, BarChart3, Settings, LogOut, CreditCard } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,7 @@ const mainItems = [
 
 const settingsItems = [
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Billing", url: "/pricing", icon: CreditCard },
 ];
 
 export function AppSidebar() {

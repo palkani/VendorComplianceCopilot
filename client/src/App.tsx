@@ -13,6 +13,7 @@ import Vendors from "@/pages/Vendors";
 import VendorDetail from "@/pages/VendorDetail";
 import Documents from "@/pages/Documents";
 import VendorPortal from "@/pages/VendorPortal";
+import Pricing from "@/pages/Pricing";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -31,6 +32,7 @@ function Router() {
       {!isAuthenticated ? (
         <>
           <Route path="/" component={Landing} />
+          <Route path="/pricing" component={Pricing} />
           <Route path="/portal/:token" component={VendorPortal} />
           <Route component={Landing} />
         </>
@@ -40,6 +42,7 @@ function Router() {
           <Route path="/vendors" component={Vendors} />
           <Route path="/vendors/:id" component={VendorDetail} />
           <Route path="/documents" component={Documents} />
+          <Route path="/pricing" component={Pricing} />
           <Route path="/portal/:token" component={VendorPortal} />
           <Route path="/reports">
             <div className="space-y-6">
